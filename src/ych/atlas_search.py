@@ -17,7 +17,6 @@ from ych.schema import FEATURE_SPACE_TO_TABLE
 # Scalar-indexed columns on modality tables that support exact-match filtering.
 _SCALAR_FIELDS: dict[str, type] = {
     "dataset_uid": str,
-    "cell_line": str,
     "assay": str,
     "is_control": bool,
 }
@@ -27,7 +26,6 @@ _METADATA_COLUMNS = [
     "cell_uid",
     "dataset_uid",
     "assay",
-    "cell_line",
     "additional_metadata",
     "is_control",
     "chemical_perturbation_uid",
@@ -50,14 +48,11 @@ class AtlasQuery:
 
     # Scalar-indexed filters (exact match)
     dataset_uid: str | None = None
-    cell_line: str | None = None
     assay: str | None = None
-    cell_type: str | None = None
-    development_stage: str | None = None
-    disease: str | None = None
-    organism: str | None = None
-    tissue: str | None = None
     is_control: bool | None = None
+
+    # Used for gene name resolution (not a cell metadata filter)
+    organism: str | None = None
 
     # Perturbation label filters (FTS index on perturbation_search_string)
     gene_names: list[str] | None = None
@@ -309,7 +304,7 @@ def _reconstruct_image_feature_vectors(
 
 _FEATURE_SPACE_RECONSTRUCTORS = {
     "gene_expression": _reconstruct_gene_expression,
-    "image_feature_vectors": _reconstruct_image_feature_vectors,
+    "image_features": _reconstruct_image_feature_vectors,
 }
 
 
@@ -366,7 +361,7 @@ class _FeatureLookups:
                 "gene_ensembl_arr": self.gene_ensembl_arr,
                 "max_gene_index": self.max_gene_index,
             }
-        if feature_space == "image_feature_vectors":
+        if feature_space == "image_features":
             return {"image_feature_names": self.image_feature_names}
         raise ValueError(f"Unknown feature_space '{feature_space}'")
 
