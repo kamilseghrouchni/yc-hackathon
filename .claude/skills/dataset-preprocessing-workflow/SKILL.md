@@ -17,6 +17,16 @@ Invoke after `perturbation-type-router` determines the analysis route and provid
 - If user provides a local `.h5ad` file path → use directly
 - If user provides a GEO accession (GSE*) → download using the script
 - If dataset comes from paper-search results → check for data accession
+- **If dataset is in LanceDB** → reconstruct AnnData from sparse `gene_expression` records:
+  1. Query `datasets` table by `dataset_uid` to get `measured_feature_indices` and `cell_count`
+  2. Query `gene_expression` table for all cells with matching `dataset_uid`
+  3. Decode sparse `gene_indices`/`counts` bytes (int32/float32) into a scipy sparse matrix
+  4. Look up gene names from `genes` table using `measured_feature_indices`
+  5. Build AnnData: `X` = sparse matrix, `var` from gene registry, `obs` from cell metadata (perturbation fields, `is_control`, `assay`)
+  6. Map `chemical_perturbation_uid` → molecule names via `molecules` table
+  7. Map `genetic_perturbation_gene_index` → gene names via `genes` table
+
+  See `lancedb-query` SKILL.md for schema details and `src/ych/ingestion_utils.py` for sparse decode helpers.
 
 ### Step 2: Get Preprocessing Parameters
 Retrieve route-specific parameters from `perturbation-type-router` output:
@@ -73,6 +83,6 @@ Present a summary to the user:
 - Validation report from `result-schema-validator`
 
 ## Dependencies
-- Uses: `perturbation-type-router` (preprocessing parameters), `result-schema-validator` (output validation)
+- Uses: `perturbation-type-router` (preprocessing parameters), `result-schema-validator` (output validation), `lancedb-query` (data retrieval from DB), `scanpy` + `anndata` + `single-cell-rna-qc` (processing)
 - Used by: `downstream-agent-skills-generator` (reads processed data metadata), `output-routing-workflow` (routes final output)
 - Scripts: `scripts/preprocess.py`

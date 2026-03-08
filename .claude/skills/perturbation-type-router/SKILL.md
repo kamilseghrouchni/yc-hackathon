@@ -168,6 +168,23 @@ If perturbation type is `unknown`:
 }
 ```
 
+## LanceDB Field Mapping
+
+When data comes from LanceDB (`gene_expression` table), the perturbation metadata maps to preprocessing keys as follows:
+
+| DB Field | Route | Maps to Preprocessing Key |
+|----------|-------|--------------------------|
+| `chemical_perturbation_uid` | chemical | `perturbation_key` (links to `molecules.sample_uid`) |
+| `chemical_perturbation_concentration` | chemical | `dose_key` |
+| `genetic_perturbation_gene_index` | genetic_crispr / genetic_rnai | `perturbation_key` (links to `genes.gene_index`) |
+| `genetic_perturbation_method` | genetic_crispr / genetic_rnai | Determines CRISPR vs RNAi route (values: CRISPR-cas9, CRISPRi, CRISPRa → crispr; siRNA → rnai) |
+| `is_control` | all | `control_key` (True = control condition) |
+| `perturbation_search_string` | all | Pre-built search tokens: `SM:<uid> GENE_ID:<idx> METHOD:<method>` |
+
+When both `chemical_perturbation_uid` and `genetic_perturbation_gene_index` are present → route to `combinatorial`.
+
+Use `gene-resolver` (at `src/ych/skills/gene-resolver/`) and `molecule-resolver` (at `src/ych/skills/molecule-resolver/`) for identifier validation during ingestion.
+
 ## Dependencies
-- Uses: `concurrent-assessment-workflow` (input: ranked papers), `query-understanding-workflow` (perturbation type)
+- Uses: `concurrent-assessment-workflow` (input: ranked papers), `query-understanding-workflow` (perturbation type), `lancedb-query` (perturbation field mapping)
 - Used by: `dataset-preprocessing-workflow` (passes preprocessing parameters)

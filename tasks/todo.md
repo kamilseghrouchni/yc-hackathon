@@ -11,7 +11,7 @@ A webapp where users type scientific queries (e.g., "What genes are upregulated 
 
 ---
 
-## Skills Inventory (19 total)
+## Skills Inventory (22 total)
 
 ### Custom Pipeline Skills (11) — Built In-House
 
@@ -27,25 +27,35 @@ A webapp where users type scientific queries (e.g., "What genes are upregulated 
 | 8 | `result-schema-validator` | Validation (+ scripts/validate_schema.py) | Done |
 | 9 | `downstream-agent-skills-generator` | Output | Done |
 | 10 | `output-routing-workflow` | Output | Done |
-| 11 | `lancedb-query` | Data source | Placeholder (colleague owns) |
+| 11 | `lancedb-query` | Data source (wired to schema) | Done |
+
+### DB Schema & Resolver Skills (3) — Built by Rayan (`src/ych/`)
+
+| # | Component | Location | Purpose |
+|---|-----------|----------|---------|
+| 12 | `schema.py` | `src/ych/schema.py` | 8 LanceDB table schemas: publications, datasets, gene_expression, image_feature_vectors, genes, molecules, image_features |
+| 13 | `gene-resolver` | `src/ych/skills/gene-resolver/` | Validates gene symbols/Ensembl IDs via Bionty ontologies, detects organisms, handles combinatorial perturbation targets |
+| 14 | `molecule-resolver` | `src/ych/skills/molecule-resolver/` | Resolves compound names/SMILES to PubChem CIDs, handles control labels (DMSO, vehicle) |
+
+**Supporting code**: `src/ych/ingestion_utils.py` (sparse matrix handling, gene registration, molecule resolution, ontology integration), `scripts/create_indexes.py` (scalar + FTS indexes)
 
 ### K-Dense Scientific Skills (7) — From claude-scientific-skills
 
 | # | Skill | Purpose |
 |---|-------|---------|
-| 12 | `scanpy` | Core scRNA-seq preprocessing (QC, norm, HVG, PCA, clustering) |
-| 13 | `anndata` | AnnData structure (.h5ad I/O, obs/var/layers management) |
-| 14 | `scvi-tools` | Deep learning models (scVI batch correction, CPA perturbation modeling) |
-| 15 | `scvelo` | RNA velocity, transcriptional dynamics post-perturbation |
-| 16 | `cellxgene-census` | Reference atlas access (61M+ cells) |
-| 17 | `umap-learn` | UMAP dimensionality reduction |
-| 18 | `pydeseq2` | Differential expression (pseudobulk DESeq2) |
+| 15 | `scanpy` | Core scRNA-seq preprocessing (QC, norm, HVG, PCA, clustering) |
+| 16 | `anndata` | AnnData structure (.h5ad I/O, obs/var/layers management) |
+| 17 | `scvi-tools` | Deep learning models (scVI batch correction, CPA perturbation modeling) |
+| 18 | `scvelo` | RNA velocity, transcriptional dynamics post-perturbation |
+| 19 | `cellxgene-census` | Reference atlas access (61M+ cells) |
+| 20 | `umap-learn` | UMAP dimensionality reduction |
+| 21 | `pydeseq2` | Differential expression (pseudobulk DESeq2) |
 
 ### Standalone Skill (1) — From K-Dense Marketplace
 
 | # | Skill | Purpose |
 |---|-------|---------|
-| 19 | `single-cell-rna-qc` | MAD-based QC with scverse best practices (3 scripts) |
+| 22 | `single-cell-rna-qc` | MAD-based QC with scverse best practices (3 scripts) |
 
 ---
 
@@ -59,7 +69,9 @@ query-understanding-workflow → Structured Query
 paper-search-workflow → Candidate Papers
   ├─ Semantic Scholar API (primary)
   ├─ EuropePMC API (secondary)
-  └─ LanceDB (when ready)
+  └─ LanceDB (curated DB — publications, datasets, gene_expression tables)
+      ├─ gene-resolver (Bionty ontology validation)
+      └─ molecule-resolver (PubChem CID resolution)
     ↓
 concurrent-assessment-workflow → Consensus Ranking
   ├─ N=3 independent assessor agents
@@ -74,6 +86,7 @@ perturbation-type-router → Route Decision
   └─ combinatorial → synergy params
     ↓
 dataset-preprocessing-workflow → Processed AnnData (.h5ad)
+  Sources: local .h5ad, GEO download, or LanceDB sparse reconstruction
   Uses: scanpy, anndata, single-cell-rna-qc, pydeseq2
     ↓
 result-schema-validator → Validation Report
@@ -121,18 +134,21 @@ downstream-agent-skills-generator → Dataset Skill for future sessions
 ## Implementation Roadmap
 
 ### Phase 1: Skills Infrastructure (DONE)
-- [x] 10 custom pipeline skills
+- [x] 11 custom pipeline skills (incl. lancedb-query wired to schema)
 - [x] Quality rubric with 6 dimensions + analytical methods
 - [x] Active methods research in assessment workflow
 - [x] 8 K-Dense/standalone scientific skills imported
+- [x] DB schema + gene-resolver + molecule-resolver (Rayan)
+- [x] Workflow skills updated with DB awareness (paper-search, query-understanding, perturbation-type-router, dataset-preprocessing)
 - [ ] Test skills load in fresh Claude Code session
 
 ### Phase 2: End-to-End Pipeline Testing (NEXT)
-- [ ] Abstract data source so pipeline works without LanceDB
+- [ ] Abstract data source so pipeline works with or without LanceDB
 - [ ] Run full pipeline on a known paper (e.g., Replogle 2022 Perturb-seq)
 - [ ] Validate query-understanding → paper-search → assessment chain
 - [ ] Validate preprocessing → validation chain with real .h5ad
 - [ ] Test analytical methods dimension + confounder surfacing
+- [ ] Test LanceDB query patterns against actual DB (when populated)
 
 ### Phase 3: Webapp Build
 - [ ] Scaffold Next.js + Vercel AI SDK + RetroUI
@@ -145,8 +161,8 @@ downstream-agent-skills-generator → Dataset Skill for future sessions
 - [ ] End-to-end testing + prompt tuning
 
 ### Phase 4: Integration
-- [ ] Colleague plugs in real LanceDB
-- [ ] Replace mock data with real vector search
+- [ ] Rayan populates LanceDB with real datasets (schema + ingestion pipeline ready)
+- [ ] Connect webapp to real LanceDB (replace mock)
 - [ ] Deploy to Vercel
 - [ ] Demo prep
 
@@ -165,6 +181,11 @@ downstream-agent-skills-generator → Dataset Skill for future sessions
 | Webapp framework | Next.js + Vercel AI SDK | Streaming, tool use, Max subscription via Gateway |
 | UI style | RetroUI NeoBrutalism | Distinctive, scientific feel |
 | Multi-agent simulation | Tool calls with assessor personas | Simpler than actual multi-agent, same visual effect |
+| DB schema | LanceDB with denormalized publications + sparse gene expression | Fast FTS + scalar filtering, no joins needed |
+| Gene resolution | Bionty ontologies (gene-resolver) | Standard ontology, handles Ensembl IDs + symbols |
+| Molecule resolution | PubChem CID (molecule-resolver) | Universal compound identifier, rate-limited API |
+| Sparse storage | bytes (int32 indices + float32 counts) | Memory-efficient for high-dimensional scRNA-seq |
+| Perturbation search | Auto-generated `perturbation_search_string` tokens | Fast FTS filtering: `SM:<uid> GENE_ID:<idx> METHOD:<m>` |
 
 ---
 

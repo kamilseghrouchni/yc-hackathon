@@ -111,6 +111,16 @@ Return the structured query JSON to the calling workflow (typically the main orc
 }
 ```
 
+### Step 6: Resolve Identifiers Against DB (Optional)
+
+When LanceDB is available, validate extracted entities against the curated registries:
+
+- **Genes**: Look up gene names in the `genes` table (`GeneSchema`) to get `gene_index` and canonical `ensembl_id`. Uses `gene-resolver` skill for standardization (Bionty ontologies, Ensembl prefix → organism mapping).
+- **Drugs/Compounds**: Look up compound names in the `molecules` table (`MoleculeSchema`) to get `pubchem_cid` and `sample_uid`. Uses `molecule-resolver` skill for PubChem resolution.
+- **Enriched query output**: If resolved, add `resolved_gene_indices` and `resolved_molecule_uids` to the structured query for direct DB filtering downstream.
+
+This step is optional — the pipeline works without it (falls back to text-based search). But when available, it enables precise perturbation-level queries against `gene_expression` table's `perturbation_search_string` field.
+
 ## Dependencies
 - Used by: Main orchestrator, `paper-search-workflow`, `perturbation-type-router`
-- Uses: None (entry point skill)
+- Uses: `lancedb-query` (optional, for identifier resolution), `gene-resolver`, `molecule-resolver` (via `src/ych/skills/`)
