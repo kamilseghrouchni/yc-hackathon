@@ -92,9 +92,9 @@ dataset-preprocessing-workflow → Processed AnnData (.h5ad)
 result-schema-validator → Validation Report
     ↓
 output-routing-workflow → Final Output
-  ├─ Route 1: Save + generate dataset skill
-  ├─ Route 2: API JSON format
-  └─ Route 3: Continue analysis
+  ├─ Mode A: Download (h5ad/CSV/JSON files)
+  ├─ Mode B: API Endpoint (persist to LanceDB + REST)
+  └─ Mode C: Continue Processing (in-agent analysis)
     ↓
 downstream-agent-skills-generator → Dataset Skill for future sessions
 ```
