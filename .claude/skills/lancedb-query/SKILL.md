@@ -139,31 +139,90 @@ cells = query_cells(db, "gene_expression",
     where="assay = '10x Chromium v3'")
 ```
 
-### 2. Full-Text Search for Perturbations (AND / OR)
+### 2. Find Datasets by Perturbation (Preferred)
 
-The `perturbation_search_string` column contains tokens like `GENE_ID:42 METHOD:CRISPR-cas9 SM:<molecule_uid>`. Use FTS to search it.
+The simplest way to find datasets for a specific perturbation is with the
+utility functions in `ych.ingestion_utils`. These iterate over all datasets
+and check each one — slower than FTS but reliable and correct.
 
 ```python
+from ych.ingestion_utils import (
+    find_datasets_by_molecule,
+    find_datasets_by_gene,
+    get_cells_for_molecule,
+    resolve_pubchem_cids,
+    lookup_molecule_uid,
+)
+
+# Find datasets for a chemical perturbation
+resolved, _ = resolve_pubchem_cids(names=["Abexinostat"])
+mol_table = db.open_table("molecules")
+cid_to_uid = lookup_molecule_uid(mol_table, list(resolved.values()), field="pubchem_cid")
+mol_uid = cid_to_uid[resolved["Abexinostat"]]
+
+datasets = find_datasets_by_molecule(db, mol_uid)
+# [{"dataset_uid": "abc-123", "cell_count": 4505}, ...]
+
+# Find datasets for a genetic perturbation
+genes = db.open_table("genes")
+tp53 = genes.search().where("gene_name = 'TP53' AND organism = 'human'").to_pandas()
+gene_idx = int(tp53["gene_index"].iloc[0])
+
+datasets = find_datasets_by_gene(db, gene_idx)
+
+# Get all treated + control cells for a molecule from a specific dataset
+cells_df = get_cells_for_molecule(db, mol_uid, dataset_uid="abc-123")
+# Returns DataFrame with _is_treated column (True for treated, False for controls)
+```
+
+### 3. Full-Text Search for Perturbations (Advanced)
+
+The `perturbation_search_string` column contains tokens like `GENE_ID:42 METHOD:CRISPR-cas9 SM:<molecule_uid>`. Use FTS via `query_cells` to search it. Under the hood, `query_cells` builds a LanceDB `MatchQuery` with the specified `fts_operator` (`"OR"` or `"AND"`).
+
+**IMPORTANT:** Always use FTS (via `query_cells` with `fts_query`) to search
+perturbation data — do NOT use SQL WHERE on `perturbation_search_string`.
+FTS uses the LanceDB `MatchQuery` which supports AND/OR operators and is
+indexed for fast retrieval.
+
+**Molecule UID hyphens:** The FTS index tokenizer splits on hyphens and colons.
+To prevent UUID fragmentation, `perturbation_search_string` stores molecule UIDs
+with hyphens stripped: `SM:cb4125bfd63648fd86aa41a4739139ff`. When building FTS
+queries for molecules, **always strip hyphens** from the UUID:
+`f"SM:{mol_uid.replace('-', '')}"`. The `build_search_query` helper in
+`atlas_search.py` does this automatically for `AtlasQuery` usage, but when
+calling `query_cells` with a raw `fts_query` string you must strip manually.
+
+```python
+import polars as pl
+
 # OR (default): cells with TP53 OR BRCA1 perturbation (by gene_index)
 cells = query_cells(db, "gene_expression",
     fts_query="GENE_ID:42 GENE_ID:107",
-    fts_operator="OR")
+    fts_operator="OR",
+    limit=100_000)
 
 # AND: cells with BOTH a specific gene AND a specific method
 cells = query_cells(db, "gene_expression",
     fts_query="GENE_ID:42 METHOD:CRISPR-cas9",
-    fts_operator="AND")
+    fts_operator="AND",
+    limit=100_000)
 
 # Combine FTS with SQL WHERE
 cells = query_cells(db, "gene_expression",
     fts_query="GENE_ID:42",
     where="is_control = false",
-    fts_operator="AND")
+    fts_operator="AND",
+    limit=100_000)
 
-# Search by molecule UID
+# Search by molecule UID — strip hyphens to match indexed tokens
 cells = query_cells(db, "gene_expression",
-    fts_query="SM:abc-molecule-uid")
+    fts_query=f"SM:{mol_uid.replace('-', '')}",
+    fts_operator="OR",
+    limit=100_000)
 ```
+
+**Note:** FTS results include a `_score` column. Drop it before combining with
+non-FTS results: `pl.from_arrow(cells).drop("_score")`
 
 **To find gene indices for FTS**, look up genes first:
 ```python
@@ -188,31 +247,30 @@ molecules_table = db.open_table("molecules")
 cid_to_uid = lookup_molecule_uid(molecules_table, list(resolved.values()), field="pubchem_cid")
 # cid_to_uid = {5311: "abc-molecule-uid"}
 
-# Step 3: Use the sample_uid in FTS query
+# Step 3: Use the sample_uid in FTS query (strip hyphens to match index)
 mol_uid = cid_to_uid[resolved["vorinostat"]]
 cells = query_cells(db, "gene_expression",
-    fts_query=f"SM:{mol_uid}")
+    fts_query=f"SM:{mol_uid.replace('-', '')}",
+    fts_operator="OR",
+    limit=100_000)
 ```
 
 This three-step resolution (compound name → PubChem CID → molecule sample_uid →
 FTS on `SM:<uid>`) is required because the `perturbation_search_string` stores
 molecule `sample_uid`s, not compound names or CIDs directly.
 
-### 3. Use `limit` to Control Result Size
+### 4. Use `limit` to Control Result Size
 
 **Always set `limit`** — queries without a limit can return millions of rows.
 
 **IMPORTANT for FTS queries:** LanceDB FTS returns results ranked by relevance
-score and may silently truncate results well below the actual match count. To
-ensure you retrieve **all** matching cells across all datasets, set `limit` much
-higher than the expected result count — typically `limit=100_000` or more. A
-limit that is too low will cause entire datasets to be silently dropped from
-results.
+score and may not return all matches if the limit is too low. Set `limit` to
+at least `100_000` for FTS queries to ensure all datasets are covered.
 
 ```python
-# FTS query — use a high limit to capture all matching cells across datasets
+# Molecule FTS — strip hyphens from UID to match indexed tokens
 treated = query_cells(db, "gene_expression",
-    fts_query=f"SM:{mol_uid}",
+    fts_query=f"SM:{mol_uid.replace('-', '')}",
     fts_operator="OR",
     limit=100_000)
 
@@ -222,7 +280,7 @@ controls = query_cells(db, "gene_expression",
     limit=5000)
 ```
 
-### 4. Reconstruct AnnData from Query Results
+### 5. Reconstruct AnnData from Query Results
 
 ```python
 # Query cells
@@ -245,7 +303,7 @@ The returned AnnData objects have:
 - `adata.obs`: cell metadata including perturbation info, `is_control`, `assay`, `dataset_uid`
 - `adata.var`: gene Ensembl IDs (gene expression) or feature names (image features)
 
-### 5. Load Publication + Dataset Context
+### 6. Load Publication + Dataset Context
 
 Fetch the full text of associated publications and dataset descriptions to pass to an LLM agent for analysis.
 
@@ -279,7 +337,7 @@ context = fetch_dataset_context(db, dataset_uids)
 # ]
 ```
 
-### 6. Save Results to Disk
+### 7. Save Results to Disk
 
 Save AnnData files and context JSON for downstream agent consumption.
 
@@ -296,7 +354,7 @@ manifest = save_query_results(
 # }
 ```
 
-### 7. Complete Workflow Example
+### 8. Complete Workflow Example
 
 ```python
 import lancedb
@@ -312,11 +370,11 @@ genes = db.open_table("genes")
 tp53 = genes.search().where("gene_name = 'TP53' AND organism = 'human'").to_pandas()
 gene_idx = int(tp53["gene_index"].iloc[0])
 
-# Step 2: Find CRISPR knockouts of TP53 (limit to 10k cells)
+# Step 2: Find CRISPR knockouts of TP53 (high limit to get all datasets)
 cells = query_cells(db, "gene_expression",
     fts_query=f"GENE_ID:{gene_idx} METHOD:CRISPR-cas9",
     fts_operator="AND",
-    limit=10000)
+    limit=100_000)
 
 # Step 3: Reconstruct AnnData
 anndatas = cells_to_anndata(db, cells)

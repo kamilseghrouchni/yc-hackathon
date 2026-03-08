@@ -101,7 +101,7 @@ def build_search_query(
         tokens.append(f"METHOD:{query.perturbation_method}")
 
     if query.chemical_perturbation_uid:
-        tokens.append(f"SM:{query.chemical_perturbation_uid}")
+        tokens.append(f"SM:{query.chemical_perturbation_uid.replace('-', '')}")
 
     if not tokens:
         return None
