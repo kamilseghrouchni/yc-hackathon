@@ -8,7 +8,7 @@ import argparse
 
 import lancedb
 
-_DEFAULT_URI = "s3://epiblast/yclance/"
+_DEFAULT_URI = "s3://ychackathon-cell-data/yclance/"
 
 TABLE_INDEXES: dict[str, list[tuple[str, str, dict]]] = {
     "publications": [
@@ -36,6 +36,28 @@ TABLE_INDEXES: dict[str, list[tuple[str, str, dict]]] = {
     "image_features": [
         ("feature_index", "scalar", {}),
         ("feature_name", "scalar", {}),
+    ],
+    "gene_expression": [
+        ("cell_uid", "scalar", {}),
+        ("dataset_uid", "scalar", {}),
+        ("assay", "scalar", {}),
+        ("is_control", "scalar", {"index_type": "BITMAP"}),
+        (
+            "perturbation_search_string",
+            "fts",
+            {"base_tokenizer": "whitespace", "stem": False, "lower_case": False},
+        ),
+    ],
+    "image_feature_vectors": [
+        ("cell_uid", "scalar", {}),
+        ("dataset_uid", "scalar", {}),
+        ("assay", "scalar", {}),
+        ("is_control", "scalar", {"index_type": "BITMAP"}),
+        (
+            "perturbation_search_string",
+            "fts",
+            {"base_tokenizer": "whitespace", "stem": False, "lower_case": False},
+        ),
     ],
 }
 

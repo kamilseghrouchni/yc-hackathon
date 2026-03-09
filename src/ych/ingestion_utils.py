@@ -608,6 +608,127 @@ def write_cell_batch(
             upsert_table(db, table_name, records)
 
 
+def _get_dataset_uids_for_table(
+    db: lancedb.DBConnection,
+    table_name: str,
+) -> list[str]:
+    """Return all dataset_uids whose feature_space matches a data table."""
+    feature_space = "gene_expression" if table_name == "gene_expression" else "image_features"
+    df = (
+        db.open_table("datasets")
+        .search()
+        .where(f"feature_space = '{feature_space}'")
+        .select(["dataset_uid"])
+        .to_pandas()
+    )
+    return df["dataset_uid"].unique().tolist()
+
+
+def find_datasets_by_molecule(
+    db: lancedb.DBConnection,
+    mol_uid: str,
+    table_name: str = "gene_expression",
+) -> list[dict]:
+    """Find all datasets containing cells treated with a given molecule.
+
+    Iterates over each dataset and checks for cells whose
+    ``chemical_perturbation_uid`` list contains ``mol_uid``.
+
+    Returns a list of dicts with ``dataset_uid`` and ``cell_count``.
+    """
+    data_table = db.open_table(table_name)
+    results = []
+
+    for ds_uid in _get_dataset_uids_for_table(db, table_name):
+        escaped = _escape_lance_value(ds_uid)
+        cells = (
+            data_table.search()
+            .where(f"dataset_uid = '{escaped}' AND is_control = false")
+            .select(["chemical_perturbation_uid"])
+            .to_pandas()
+        )
+        count = sum(
+            1 for uids in cells["chemical_perturbation_uid"]
+            if uids is not None and mol_uid in uids
+        )
+        if count > 0:
+            results.append({"dataset_uid": ds_uid, "cell_count": count})
+
+    return results
+
+
+def find_datasets_by_gene(
+    db: lancedb.DBConnection,
+    gene_index: int,
+    table_name: str = "gene_expression",
+) -> list[dict]:
+    """Find all datasets containing cells with a genetic perturbation targeting a gene.
+
+    Iterates over each dataset and checks for cells whose
+    ``genetic_perturbation_gene_index`` list contains ``gene_index``.
+
+    Returns a list of dicts with ``dataset_uid`` and ``cell_count``.
+    """
+    data_table = db.open_table(table_name)
+    results = []
+
+    for ds_uid in _get_dataset_uids_for_table(db, table_name):
+        escaped = _escape_lance_value(ds_uid)
+        cells = (
+            data_table.search()
+            .where(f"dataset_uid = '{escaped}' AND is_control = false")
+            .select(["genetic_perturbation_gene_index"])
+            .to_pandas()
+        )
+        count = sum(
+            1 for gids in cells["genetic_perturbation_gene_index"]
+            if gids is not None and gene_index in gids
+        )
+        if count > 0:
+            results.append({"dataset_uid": ds_uid, "cell_count": count})
+
+    return results
+
+
+def get_cells_for_molecule(
+    db: lancedb.DBConnection,
+    mol_uid: str,
+    dataset_uid: str,
+    table_name: str = "gene_expression",
+    include_controls: bool = True,
+) -> pd.DataFrame:
+    """Get all cells for a molecule perturbation from a specific dataset.
+
+    Returns treated cells filtered to ``mol_uid``. If ``include_controls``,
+    also appends control cells with a ``_is_treated`` column.
+    """
+    data_table = db.open_table(table_name)
+    escaped = _escape_lance_value(dataset_uid)
+
+    treated = (
+        data_table.search()
+        .where(f"dataset_uid = '{escaped}' AND is_control = false")
+        .to_pandas()
+    )
+    treated = treated[
+        treated["chemical_perturbation_uid"].apply(
+            lambda uids: uids is not None and mol_uid in uids
+        )
+    ]
+
+    if include_controls:
+        controls = (
+            data_table.search()
+            .where(f"dataset_uid = '{escaped}' AND is_control = true")
+            .to_pandas()
+        )
+        treated["_is_treated"] = True
+        controls["_is_treated"] = False
+        return pd.concat([treated, controls], ignore_index=True)
+
+    return treated
+
+
 def standardize_metadata_to_ontology(
     values: list[str] | np.ndarray,
     entity: OntologyEntity,

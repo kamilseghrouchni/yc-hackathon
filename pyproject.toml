@@ -37,6 +37,7 @@ dependencies = [
     "tifffile>=2026.3.3",
     "imagecodecs>=2026.1.14",
     "pubchempy",
+    "duckdb",
 ]
 
 [[tool.uv.index]]

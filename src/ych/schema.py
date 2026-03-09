@@ -78,6 +78,7 @@ class _CellMetadataMixin(LanceModel):
     cell_uid: str = Field(default_factory=lambda: str(uuid.uuid4()))
     dataset_uid: str
     assay: str
+    cell_line: str | None
     additional_metadata: str | None
 
     # Spatio-temporal coordinates
@@ -160,7 +161,7 @@ def _generate_perturbation_search_tokens(record: _CellMetadataMixin) -> str:
     """Build perturbation search tokens from a record's perturbation fields."""
     tokens: list[str] = []
     if record.chemical_perturbation_uid:
-        tokens.extend([f"SM:{uid}" for uid in record.chemical_perturbation_uid if uid])
+        tokens.extend([f"SM:{uid.replace('-', '')}" for uid in record.chemical_perturbation_uid if uid])
     if record.genetic_perturbation_gene_index:
         tokens.extend([f"GENE_ID:{gid}" for gid in record.genetic_perturbation_gene_index if gid])
     if record.genetic_perturbation_method:
