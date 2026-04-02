@@ -128,27 +128,44 @@
       align-items: center;
       justify-content: center;
       gap: 12px;
-      color: rgba(255,255,255,0.3);
-      font-family: ui-monospace, monospace;
-      font-size: 13px;
+      cursor: pointer;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .demo-placeholder::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
     }
 
     .demo-placeholder .play {
-      width: 56px;
-      height: 56px;
-      border: 2px solid rgba(255,255,255,0.2);
-      border-radius: 50%;
+      position: relative;
+      width: 72px;
+      height: 72px;
+      background: var(--primary);
+      border: 3px solid #fff;
+      box-shadow: 4px 4px 0 #000;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+
+    .demo-placeholder:hover .play {
+      transform: translate(1px, 1px);
+      box-shadow: 3px 3px 0 #000;
     }
 
     .demo-placeholder .play svg {
-      width: 20px;
-      height: 20px;
-      fill: rgba(255,255,255,0.3);
-      margin-left: 3px;
+      width: 26px;
+      height: 26px;
+      fill: #fff;
+      margin-left: 4px;
     }
+
+    .demo-placeholder.hidden { display: none; }
 
     /* ── Content sections ── */
     .content {
@@ -355,7 +372,12 @@
     <div class="container">
       <p class="demo-label">// demo</p>
       <div class="demo-frame">
-        <video src="assets/Dia.mp4" controls playsinline></video>
+        <video id="demo-video" src="assets/Dia.mp4" controls playsinline poster="assets/poster.jpg"></video>
+        <div class="demo-placeholder" id="demo-overlay" style="background-image: url('assets/poster.jpg')" onclick="playDemo()">
+          <div class="play">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -466,5 +488,13 @@
     </div>
   </footer>
 
+  <script>
+    function playDemo() {
+      const video = document.getElementById('demo-video');
+      const overlay = document.getElementById('demo-overlay');
+      overlay.classList.add('hidden');
+      video.play();
+    }
+  </script>
 </body>
 </html>
